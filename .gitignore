@@ -129,5 +129,5 @@ dmypy.json
 .pyre/
 
 # Bot API data and link to data
-config.py
+config_module.py
 Library/
