@@ -154,6 +154,9 @@ def selectgallery_cmd(message):
 		bot.send_message(message.chat.id, "Select gallery:", reply_markup=reply_markup)
 	else: bot.send_message(message.chat.id, "Permission denied")
 
+#----------------------------------------------------------------------------------------------------
+# CALLBACK HANDLER
+#----------------------------------------------------------------------------------------------------
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
 	#callback for inline keyboard of /selectgallery command

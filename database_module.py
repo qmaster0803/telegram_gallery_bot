@@ -1,9 +1,10 @@
+import storage_module
 import sqlite3
 import json
 
 def open_connection():
 	try:
-		db_conn = sqlite3.connect("Library/bot_database.db")
+		db_conn = sqlite3.connect(config_module.main_db_path)
 	except:
 		print("Error connecting to database!")
 	return db_conn

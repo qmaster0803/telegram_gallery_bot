@@ -13,4 +13,5 @@ Galleries modifying commands:
 (TODO)/galleryinfo <id>- show all info about selected gallery
 
 Casual commands:
-/selectgallery - select working gallery'''
+/selectgallery - select working gallery
+/month - show selected month as previews'''
