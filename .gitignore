@@ -131,3 +131,4 @@ dmypy.json
 # Bot API data and link to data
 config_module.py
 Library/
+Downloads/
