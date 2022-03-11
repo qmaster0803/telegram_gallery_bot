@@ -32,6 +32,8 @@ def help_cmd(message):
     #for admins
     if(user_rights == 1):
         bot.send_message(message.chat.id, large_messages.admin_help_message)
+    elif(user_rights == 0):
+        bot.send_message(message.chat.id, large_messages.user_help_message)
     #TODO
 
 #----------------------------------------------------------------------------------------------------
@@ -181,7 +183,6 @@ def month_cmd(message):
         if(working_gallery != None):
             gallery_db_path = os.path.join(config_module.library_path, str(working_gallery), "gallery.db")
             months = database_module.find_months_in_gallery(gallery_db_path)
-            print(months)
             if(months == None): bot.send_message(message.chat.id, "There are no photos in gallery!")
             else:
                 reply_markup = generate_inline_keyboard_months_selection(months, working_gallery)
@@ -212,7 +213,7 @@ def doc_handler(message):
                     local_filepath = storage_module.download(file_url, str(file_info.file_unique_id)+str(message.chat.id))
                     database_module.add_to_queue(local_filepath, message.chat.id, database_module.get_current_working_gallery(message.chat.id))
                     bot.delete_message(message.chat.id, message.id)
-            else: bot.send_message(message.chat.id, "Unsupported file type! Currently I support *.jpg, *.jpeg and *.png files.")
+            else: bot.send_message(message.chat.id, "Unsupported file type! Currently I support *.jpg, *.jpeg, *.png and *.heic files.")
         else: bot.send_message(message.chat.id, "Please select gallery first!")
     else: bot.send_message(message.chat.id, "Permission denied")
 
@@ -265,6 +266,12 @@ def process_queue(stop_event):
     while(True):
         if(database_module.check_processing_queue_available() > 0):
             file = database_module.get_file_from_queue() #return [id, path, user_id, gallery_id]
+
+            if(os.path.splitext(file[1])[1].lower() == ".heic"):
+                file = list(file)
+                photos_module.heic_to_jpg(file[1])
+                os.remove(file[1])
+                file[1] = os.path.splitext(file[1])[0]+".jpg"
 
             gallery_db_path = os.path.join(config_module.library_path, str(file[3]), "gallery.db")
             photo_date = photos_module.get_photo_date(file[1])

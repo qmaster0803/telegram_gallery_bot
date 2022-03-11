@@ -3,6 +3,7 @@ import os
 import numpy as np
 from PIL import Image
 from datetime import datetime
+import subprocess
 
 SQUARE_IMG_SIZE = 512
 WHITE_BORDER_SIZE = 0.5 #in percents
@@ -60,3 +61,7 @@ def get_photo_date(path):
         return int(timestamp)
     else:
         return None
+
+def heic_to_jpg(filename):
+    #requires Imagemagick, but there are no other ways to keep EXIF
+    subprocess.run(["convert", "%s" % filename, "%s" % (filename[0:-5] + '.jpg')])

@@ -21,7 +21,7 @@ def create_new_gallery(gallery_id):
         return 1
 
 def check_photo_ext(filename):
-    if(os.path.splitext(filename)[1].lower() in [".jpg", ".jpeg", ".png"]): return True
+    if(os.path.splitext(filename)[1].lower() in [".jpg", ".jpeg", ".png", ".heic"]): return True
     else: return False
 
 def _generate_id(size=32, chars=string.ascii_uppercase + string.digits):
