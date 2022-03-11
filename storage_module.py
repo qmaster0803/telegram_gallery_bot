@@ -4,6 +4,7 @@ import sqlite3 #for creating databases for new galleries
 import requests
 import string
 import random
+import hashlib
 
 def create_new_gallery(gallery_id):
     if(str(gallery_id) not in os.listdir(config_module.library_path)):
@@ -11,7 +12,7 @@ def create_new_gallery(gallery_id):
         os.mkdir(gallery_path)
         db_conn = sqlite3.connect(os.path.join(gallery_path, "gallery.db"))
         cur = db_conn.cursor()
-        cur.execute('CREATE TABLE "photos" ("id" INTEGER UNIQUE, "date" INTEGER, "checksum" TEXT, PRIMARY KEY("id"));')
+        cur.execute('CREATE TABLE "photos" ("id" INTEGER UNIQUE, "date" INTEGER, "checksum" TEXT, "size" INTEGER, PRIMARY KEY("id" AUTOINCREMENT));')
         db_conn.commit()
         db_conn.close()
         return 0
@@ -32,3 +33,10 @@ def download(url, local_name): #currently not optimized for large files. TODO
     with open(local_filepath, 'wb') as file:
         file.write(r.content)
     return local_filepath
+
+def md5_of_file(path):
+    hash_md5 = hashlib.md5()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
