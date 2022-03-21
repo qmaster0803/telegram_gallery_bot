@@ -13,8 +13,34 @@ def open_connection(db_path=config_module.main_db_path):
         print("Error connecting to database!")
     return db_conn
 
-def create_new_database():
-    pass
+def init_database(): #create tables only if they not exist, so we can run this on every bot startup
+    db_conn = open_connection()
+    cur = db_conn.cursor()
+    cur.executescript('''
+        BEGIN TRANSACTION;
+        CREATE TABLE IF NOT EXISTS "galleries" (
+            "id"    INTEGER UNIQUE,
+            "name"  TEXT,
+            "deleted"   INTEGER DEFAULT 0,
+            PRIMARY KEY("id" AUTOINCREMENT)
+        );
+        CREATE TABLE IF NOT EXISTS "processing_queue" (
+            "id"    INTEGER UNIQUE,
+            "path"  TEXT,
+            "user_id"   INTEGER,
+            "gallery_id"    INTEGER,
+            "action"    TEXT,
+            PRIMARY KEY("id" AUTOINCREMENT)
+        );
+        CREATE TABLE IF NOT EXISTS "users" (
+            "id"    INTEGER UNIQUE,
+            "rights"    INTEGER,
+            "galleries" TEXT DEFAULT '[]',
+            "current_working_gallery"   INTEGER DEFAULT -1,
+            PRIMARY KEY("id")
+        );
+        COMMIT;
+    ''')
     #TODO
 
 #----------------------------------------------------------------------------------------------------
@@ -247,6 +273,7 @@ def find_months_in_gallery(db_path):
     cur.execute('SELECT `id` FROM `photos` WHERE `date` IS NULL;')
     entries_without_date = len(cur.fetchall())
     del cur
+
     #count entries with date
     cur = db_conn.cursor()
     cur.execute('SELECT `id` FROM `photos` WHERE `date` IS NOT NULL;')
@@ -282,8 +309,8 @@ def find_months_in_gallery(db_path):
             for month in range(first_month, last_month+1):
                 count = count_photos_in_month(db_path, first_year, month)
                 if(count > 0): result.append([first_year, month, count])
-        return result
-    if(entries_without_date + entries_with_date == 0): return None
+    if(len(result) > 0): return result
+    else: return None
 
 def select_all_photos_of_month(db_path, gallery_id, year, month, use_thumbs=False):
     db_conn = open_connection(db_path=db_path)
@@ -310,25 +337,25 @@ def select_all_photos_of_month(db_path, gallery_id, year, month, use_thumbs=Fals
 #----------------------------------------------------------------------------------------------------
 # PHOTOS PROCESSING QUEUE FUNCTIONS
 #----------------------------------------------------------------------------------------------------
-def add_to_queue(path, user_id, gallery_id):
+def add_to_queue(path, user_id, gallery_id, action):
     db_conn = open_connection()
     cur = db_conn.cursor()
-    cur.execute('INSERT INTO `processing_queue` (`path`, `user_id`, `gallery_id`) VALUES ("{}", {}, {});'.format(path, user_id, gallery_id))
+    cur.execute('INSERT INTO `processing_queue` (`path`, `user_id`, `gallery_id`, `action`) VALUES ("{}", {}, {}, "{}");'.format(path, user_id, gallery_id, action))
     db_conn.commit()
     db_conn.close()
 
-def check_processing_queue_available():
+def check_processing_queue_available(action):
     db_conn = open_connection()
     cur = db_conn.cursor()
-    cur.execute('SELECT * FROM `processing_queue`;')
+    cur.execute('SELECT * FROM `processing_queue` WHERE `action`="{}";'.format(action))
     rowcount = len(cur.fetchall())
     db_conn.close()
     return rowcount
 
-def get_file_from_queue():
+def get_file_from_queue(action):
     db_conn = open_connection()
     cur = db_conn.cursor()
-    cur.execute('SELECT * FROM `processing_queue` ORDER BY `id` DESC LIMIT 1;')
+    cur.execute('SELECT * FROM `processing_queue` WHERE `action`="{}" ORDER BY `id` DESC LIMIT 1;'.format(action))
     res = cur.fetchone()
     db_conn.close()
     return res
@@ -339,11 +366,3 @@ def delete_file_from_queue(file_id):
     cur.execute('DELETE FROM `processing_queue` WHERE `id`={};'.format(file_id))
     db_conn.commit()
     db_conn.close()
-
-def check_queue_for_user(user_id):
-    db_conn = open_connection()
-    cur = db_conn.cursor()
-    cur.execute('SELECT `id` FROM `processing_queue` WHERE `user_id`={};'.format(user_id))
-    result = len(cur.fetchall())
-    db_conn.close()
-    return result

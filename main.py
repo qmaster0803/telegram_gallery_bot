@@ -11,7 +11,9 @@ import time
 import tempfile
 from datetime import datetime
 
+telebot.apihelper.API_URL = config_module.server_url
 bot = telebot.TeleBot(config_module.bot_token, parse_mode=None)
+database_module.init_database()
 
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
@@ -202,7 +204,7 @@ def doc_handler(message):
     user_rights = database_module.check_user_rights(message.chat.id)
     if(user_rights == 1 or user_rights == 0):
         working_gallery = database_module.get_current_working_gallery(message.chat.id)
-        if(working_gallery != -1):
+        if(working_gallery != None):
             if(storage_module.check_photo_ext(message.document.file_name)):
                 if(message.document.file_size > 20971520): #20 MB
                     bot.send_message(message.chat.id, "Sorry, but only files under 20 MB supported now!")
@@ -211,7 +213,7 @@ def doc_handler(message):
                     file_url = 'https://api.telegram.org/file/bot{}/{}'.format(config_module.bot_token, file_info.file_path)
                     #file_unique_id and chat_id combination is used as local filename in downloads folder to prevent async conflicts
                     local_filepath = storage_module.download(file_url, str(file_info.file_unique_id)+str(message.chat.id))
-                    database_module.add_to_queue(local_filepath, message.chat.id, database_module.get_current_working_gallery(message.chat.id))
+                    database_module.add_to_queue(local_filepath, message.chat.id, database_module.get_current_working_gallery(message.chat.id), "add")
                     bot.delete_message(message.chat.id, message.id)
             else: bot.send_message(message.chat.id, "Unsupported file type! Currently I support *.jpg, *.jpeg, *.png and *.heic files.")
         else: bot.send_message(message.chat.id, "Please select gallery first!")
@@ -246,11 +248,24 @@ def callback_handler(call):
                 bot.answer_callback_query(call.id, "Please wait...")
                 gallery_db_path = os.path.join(config_module.library_path, str(selected_gallery), "gallery.db")
                 batch = database_module.select_all_photos_of_month(gallery_db_path, selected_gallery, selected_year, selected_month, use_thumbs=True)
+                preview_tables = photos_module.create_preview_table(batch)
                 #using tempfile as buffer
-                temp = tempfile.TemporaryFile()
-                temp.write(photos_module.create_preview_table(batch))
-                temp.seek(0)
-                bot.send_photo(call.message.chat.id, temp)
+                if(len(preview_tables) == 1):
+                    temp = tempfile.TemporaryFile()
+                    temp.write(preview_tables[0])
+                    temp.seek(0)
+                    visible_file_name = str(selected_gallery)+"-"+str(selected_month)+"."+str(selected_year)+"_preview.jpeg"
+                    bot.send_document(call.message.chat.id, temp, visible_file_name=visible_file_name)
+                else:
+                    print("Got multiple tables:", len(preview_tables))
+                    for i, table in enumerate(preview_tables):
+                        temp = tempfile.TemporaryFile()
+                        temp.write(table)
+                        temp.seek(0)
+                        visible_file_name = str(selected_gallery)+"-"+str(selected_month)+"."+str(selected_year)+"_preview-"+str(i)+".jpeg"
+                        bot.send_document(call.message.chat.id, temp, visible_file_name=visible_file_name)
+                        del temp
+
             else:
                 bot.edit_message_text("Access denied!", call.message.chat.id, call.message.id, reply_markup=None)
                 bot.answer_callback_query(call.id, "Access denied!")
@@ -264,8 +279,8 @@ def callback_handler(call):
 #----------------------------------------------------------------------------------------------------
 def process_queue(stop_event):
     while(True):
-        if(database_module.check_processing_queue_available() > 0):
-            file = database_module.get_file_from_queue() #return [id, path, user_id, gallery_id]
+        if(database_module.check_processing_queue_available("add") > 0):
+            file = database_module.get_file_from_queue("add") #return [id, path, user_id, gallery_id]
 
             if(os.path.splitext(file[1])[1].lower() == ".heic"):
                 file = list(file)
@@ -274,21 +289,27 @@ def process_queue(stop_event):
                 file[1] = os.path.splitext(file[1])[0]+".jpg"
 
             gallery_db_path = os.path.join(config_module.library_path, str(file[3]), "gallery.db")
-            photo_date = photos_module.get_photo_date(file[1])
-            md5_hash = storage_module.md5_of_file(file[1])
-            photo_size = os.path.getsize(file[1])
-
-            if(not database_module.check_photo_exists(gallery_db_path, photo_size, md5_hash)):
-                #adding to system
-                #currently processing only photos (TODO)
-                photo_id = database_module.add_photo_to_gallery(gallery_db_path, photo_date, md5_hash, photo_size)
-                new_filepath = os.path.join(config_module.library_path, str(file[3]), str(photo_id)+os.path.splitext(file[1])[1])
-                os.rename(file[1], new_filepath) #move file from downloads dir to gallery dir
-                photos_module.create_preview(new_filepath)
-            else:
-                #file already exists
-                bot.send_photo(file[2], open(file[1], 'rb'), caption="This photo already exists in this gallery!")
+            try:
+                photo_date = photos_module.get_photo_date(file[1])
+            except:
+                bot.send_document(file[2], open(file[1], 'rb'), caption="This photo cannot be processed!")
                 os.remove(file[1])
+            else:
+                md5_hash = storage_module.md5_of_file(file[1])
+                photo_size = os.path.getsize(file[1])
+
+                if(not database_module.check_photo_exists(gallery_db_path, photo_size, md5_hash)):
+                    #adding to system
+                    #currently processing only photos (TODO)
+                    photo_id = database_module.add_photo_to_gallery(gallery_db_path, photo_date, md5_hash, photo_size)
+                    new_filepath = os.path.join(config_module.library_path, str(file[3]), str(photo_id)+os.path.splitext(file[1])[1])
+                    os.rename(file[1], new_filepath) #move file from downloads dir to gallery dir
+                    photos_module.create_preview(new_filepath, photo_id)
+                else:
+                    #file already exists
+                    print(file[1])
+                    bot.send_photo(file[2], open(file[1], 'rb'), caption="This photo already exists in this gallery!")
+                    os.remove(file[1])
 
             database_module.delete_file_from_queue(file[0])
         else: time.sleep(1)

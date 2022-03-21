@@ -28,6 +28,7 @@ def _generate_id(size=32, chars=string.ascii_uppercase + string.digits):
     return ''.join(random.choice(chars) for _ in range(size))
 
 def download(url, local_name): #currently not optimized for large files. TODO
+    os.makedirs(config_module.downloads_path, exist_ok=True)
     r = requests.get(url, allow_redirects=True)
     local_filepath = os.path.join(config_module.downloads_path, local_name+os.path.splitext(url)[1])
     with open(local_filepath, 'wb') as file:
