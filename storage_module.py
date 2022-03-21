@@ -36,6 +36,13 @@ def download(url, local_name): #DEPRICATED because of local server
         file.write(r.content)
     return local_filepath
 
+def copy_to_tmp(origin_path, local_name):
+    print("Copying:", origin_path)
+    os.makedirs(config_module.downloads_path, exist_ok=True)
+    local_filepath = os.path.join(config_module.downloads_path, local_name+os.path.splitext(origin_path)[1])
+    os.rename(origin_path, local_filepath)
+    return local_filepath
+
 def md5_of_file(path):
     hash_md5 = hashlib.md5()
     with open(path, "rb") as f:

@@ -210,11 +210,11 @@ def doc_handler(message):
                     bot.send_message(message.chat.id, "Sorry, but only files under 20 MB supported now!")
                 else:
                     file_info = bot.get_file(message.document.file_id)
-                    file_url = config_module.file_server_url.format(config_module.bot_token, file_info.file_path)
+                    #file_url = config_module.file_server_url.format(config_module.bot_token, file_info.file_path)
                     #file_unique_id and chat_id combination is used as local filename in downloads folder to prevent async conflicts
-                    local_filepath = storage_module.download(file_url, str(file_info.file_unique_id)+str(message.chat.id))
+                    local_filepath = storage_module.copy_to_tmp(file_info.file_path, str(file_info.file_unique_id)+str(message.chat.id))
                     database_module.add_to_queue(local_filepath, message.chat.id, database_module.get_current_working_gallery(message.chat.id), "add")
-                    #bot.delete_message(message.chat.id, message.id)
+                    bot.delete_message(message.chat.id, message.id)
             else: bot.send_message(message.chat.id, "Unsupported file type! Currently I support *.jpg, *.jpeg, *.png and *.heic files.")
         else: bot.send_message(message.chat.id, "Please select gallery first!")
     else: bot.send_message(message.chat.id, "Permission denied")
@@ -272,6 +272,12 @@ def callback_handler(call):
         else:
             bot.edit_message_text("Gallery deleted!", call.message.chat.id, call.message.id, reply_markup=None)
             bot.answer_callback_query(call.id, "Gallery deleted!")
+
+    #callback for inline keyboard of autorotate prompts
+    if(call.data.startswith("applyrotation")):
+        selected_gallery = int(call.data.split()[1])
+        selected_photo = int(call.data.split()[2])
+        bot.answer_callback_query(call.id, "Applying rotation to photo "+str(selected_photo)+" from gallery "+str(selected_gallery))
         
 
 #----------------------------------------------------------------------------------------------------
@@ -312,8 +318,9 @@ def process_add_queue(stop_event):
                     new_filepath = os.path.join(config_module.library_path, str(file[3]), str(photo_id)+os.path.splitext(file[1])[1])
                     os.rename(file[1], new_filepath) #move file from downloads dir to gallery dir
                     photos_module.create_preview(new_filepath, photo_id)
-                    #add to rotation processing queue
-                    database_module.add_to_queue(new_filepath, file[2], file[3], "rotation")
+                    #add to rotation processing queue if feature enabled for this gallery
+                    if(database_module.get_gallery_info(file[3])[3] == 1):
+                        database_module.add_to_queue(new_filepath, file[2], file[3], "rotation")
                 else:
                     #file already exists
                     print(file[1])
@@ -326,6 +333,12 @@ def process_add_queue(stop_event):
             print("Add queue processing stoppped!")
             break
 
+def generate_inline_keyboard_apply_rotation(gallery_id, photo_id, marked=None):
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.row_width = 1
+    markup.add(telebot.types.InlineKeyboardButton("Save", callback_data="applyrotation "+str(gallery_id)+" "+str(photo_id)))
+    return markup
+
 def process_rotation_queue(stop_event):
     while(True):
         if(database_module.check_processing_queue_available("rotation") > 0):
@@ -334,7 +347,14 @@ def process_rotation_queue(stop_event):
                 file = database_module.get_file_from_queue("rotation") #return [id, path, user_id, gallery_id, action]
                 thumb_filename = os.path.splitext(file[1])[0]+"_thumb.jpg"
                 predicted_rotation = photos_module.detect_rotation(thumb_filename)
-                print("File:", file[1], "; thumbnail:", thumb_filename,"; predicted rotation:", predicted_rotation)
+                if(predicted_rotation != 0):
+                    print("File:", file[1], "; thumbnail:", thumb_filename,"; predicted rotation:", predicted_rotation)
+                    temp = tempfile.TemporaryFile() #buffer for rotated img
+                    temp.write(photos_module.rotate_image(file[1], predicted_rotation))
+                    temp.seek(0)
+                    gallery_db_path = os.path.join(config_module.library_path, str(file[3]), "gallery.db")
+                    bot.send_photo(file[2], temp, caption="Seems like this is the correct image rotation. Save?", reply_markup=generate_inline_keyboard_apply_rotation(file[3], database_module.get_photo_id_by_path(file[1])))
+                time.sleep(5)
                 #database_module.delete_file_from_queue(file[0])
         else: time.sleep(1)
         if(stop_event.is_set()):

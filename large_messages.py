@@ -10,7 +10,8 @@ Galleries modifying commands:
 /delgallery <id> - delete gallery (without deleting content)
 /listgalleries - list all galleries
 (TODO)/renamegallery <id> <new_name>- rename existing gallery
-(TODO)/galleryinfo <id>- show all info about selected gallery
+(TODO)/galleryinfo <id> - show all info about selected gallery
+(TODO)/autorotate <id> <enable/disable> - enable or disable autorotate prompt for gallery
 
 Casual commands:
 /selectgallery - select working gallery

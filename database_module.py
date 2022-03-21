@@ -22,6 +22,7 @@ def init_database(): #create tables only if they not exist, so we can run this o
             "id"    INTEGER UNIQUE,
             "name"  TEXT,
             "deleted"   INTEGER DEFAULT 0,
+            "autorotate"    INTEGER DEFAULT 0,
             PRIMARY KEY("id" AUTOINCREMENT)
         );
         CREATE TABLE IF NOT EXISTS "processing_queue" (
@@ -333,6 +334,10 @@ def select_all_photos_of_month(db_path, gallery_id, year, month, use_thumbs=Fals
         else: mask = os.path.join(config_module.library_path, str(gallery_id), str(photo_id[0])+".*")
         result_paths.append(glob.glob(mask)[0])
     return result_paths
+
+def get_photo_id_by_path(path):
+    print("Photo id:", int(os.path.splitext(os.path.basename(path))[0]))
+    return int(os.path.splitext(os.path.basename(path))[0])
 
 #----------------------------------------------------------------------------------------------------
 # PHOTOS PROCESSING QUEUE FUNCTIONS

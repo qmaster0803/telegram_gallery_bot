@@ -72,9 +72,6 @@ def create_preview_table(img_paths, columns=3):
 
     return output
 
-def open_photo(path):
-    return cv2.imread(path)
-
 def get_photo_date(path):
     img = Image.open(path)
     exif = img.getexif()
@@ -112,3 +109,12 @@ def detect_rotation(path, number_of_times_to_upsample=2):
     elif(faces.count(max(faces)) != 1): return None
     else:
         return faces.index(max(faces))
+
+def rotate_image(path, rotations):
+    img = cv2.imread(path)
+    rot = None
+    if(rotations == 1):   rot = cv2.ROTATE_90_COUNTERCLOCKWISE
+    elif(rotations == 2): rot = cv2.ROTATE_180
+    else:                 rot = cv2.ROTATE_90_CLOCKWISE
+    img = cv2.rotate(img, rot)
+    return cv2.imencode('.jpg', img)[1]
