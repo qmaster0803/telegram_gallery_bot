@@ -210,11 +210,11 @@ def doc_handler(message):
                     bot.send_message(message.chat.id, "Sorry, but only files under 20 MB supported now!")
                 else:
                     file_info = bot.get_file(message.document.file_id)
-                    file_url = 'https://api.telegram.org/file/bot{}/{}'.format(config_module.bot_token, file_info.file_path)
+                    file_url = config_module.file_server_url.format(config_module.bot_token, file_info.file_path)
                     #file_unique_id and chat_id combination is used as local filename in downloads folder to prevent async conflicts
                     local_filepath = storage_module.download(file_url, str(file_info.file_unique_id)+str(message.chat.id))
                     database_module.add_to_queue(local_filepath, message.chat.id, database_module.get_current_working_gallery(message.chat.id), "add")
-                    bot.delete_message(message.chat.id, message.id)
+                    #bot.delete_message(message.chat.id, message.id)
             else: bot.send_message(message.chat.id, "Unsupported file type! Currently I support *.jpg, *.jpeg, *.png and *.heic files.")
         else: bot.send_message(message.chat.id, "Please select gallery first!")
     else: bot.send_message(message.chat.id, "Permission denied")
@@ -277,15 +277,22 @@ def callback_handler(call):
 #----------------------------------------------------------------------------------------------------
 # INTERNAL PROCESSING FUNCTIONS
 #----------------------------------------------------------------------------------------------------
-def process_queue(stop_event):
+def process_add_queue(stop_event):
     while(True):
         if(database_module.check_processing_queue_available("add") > 0):
-            file = database_module.get_file_from_queue("add") #return [id, path, user_id, gallery_id]
+            file = database_module.get_file_from_queue("add") #return [id, path, user_id, gallery_id, action]
 
-            if(os.path.splitext(file[1])[1].lower() == ".heic"):
-                file = list(file)
+            if(os.path.splitext(file[1])[1].lower() == ".heic"): #convert heic to jpg
+                file = list(file)                                #converting from tuple to list to allow modifying
                 photos_module.heic_to_jpg(file[1])
                 os.remove(file[1])
+                file[1] = os.path.splitext(file[1])[0]+".jpg"
+
+            if(os.path.splitext(file[1])[1].lower() == ".png"):  #convert png to jpg
+                file = list(file)                                #converting from tuple to list to allow modifying
+                photos_module.png_to_jpg(file[1])
+                print("Removing", file[1])
+                #os.remove(file[1])
                 file[1] = os.path.splitext(file[1])[0]+".jpg"
 
             gallery_db_path = os.path.join(config_module.library_path, str(file[3]), "gallery.db")
@@ -305,6 +312,8 @@ def process_queue(stop_event):
                     new_filepath = os.path.join(config_module.library_path, str(file[3]), str(photo_id)+os.path.splitext(file[1])[1])
                     os.rename(file[1], new_filepath) #move file from downloads dir to gallery dir
                     photos_module.create_preview(new_filepath, photo_id)
+                    #add to rotation processing queue
+                    database_module.add_to_queue(new_filepath, file[2], file[3], "rotation")
                 else:
                     #file already exists
                     print(file[1])
@@ -314,14 +323,30 @@ def process_queue(stop_event):
             database_module.delete_file_from_queue(file[0])
         else: time.sleep(1)
         if(stop_event.is_set()):
-            print("Queue processing stoppped!")
+            print("Add queue processing stoppped!")
             break
 
+def process_rotation_queue(stop_event):
+    while(True):
+        if(database_module.check_processing_queue_available("rotation") > 0):
+            now_hour = datetime.now().hour
+            if(config_module.rotation_check_allday == 1 or (now_hour >= config_module.rotation_check_start and now_hour <= config_module.rotation_check_stop)):
+                file = database_module.get_file_from_queue("rotation") #return [id, path, user_id, gallery_id, action]
+                thumb_filename = os.path.splitext(file[1])[0]+"_thumb.jpg"
+                predicted_rotation = photos_module.detect_rotation(thumb_filename)
+                print("File:", file[1], "; thumbnail:", thumb_filename,"; predicted rotation:", predicted_rotation)
+                #database_module.delete_file_from_queue(file[0])
+        else: time.sleep(1)
+        if(stop_event.is_set()):
+            print("Rotation queue processing stoppped!")
+            break
 
 if(__name__ == "__main__"):
     quit_event = threading.Event()
-    processing_queue_thread = threading.Thread(target=process_queue, args=(quit_event,))
+    processing_queue_thread = threading.Thread(target=process_add_queue, args=(quit_event,))
     processing_queue_thread.start()
+    processing_rotation_thread = threading.Thread(target=process_rotation_queue, args=(quit_event,))
+    processing_rotation_thread.start()
 
     #if ctrl+c pressed, execution will be continued after this line
     bot.polling(non_stop=True)

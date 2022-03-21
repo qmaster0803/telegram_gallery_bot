@@ -88,7 +88,10 @@ def get_photo_date(path):
 
 def heic_to_jpg(filename):
     #requires Imagemagick, but there are no other ways to keep EXIF
-    subprocess.run(["convert", "%s" % filename, "%s" % (filename[0:-5] + '.jpg')])
+    subprocess.run(["convert", "%s" % filename, "%s" % (os.path.splitext(filename)[0] + '.jpg')])
+
+def png_to_jpg(filename):
+    subprocess.run(["convert", "%s" % filename, "%s" % (os.path.splitext(filename)[0] + '.jpg')])
 
 #uses face detection
 #if faces not found returns None
