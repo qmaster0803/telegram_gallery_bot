@@ -40,6 +40,7 @@ def copy_to_tmp(origin_path, local_name):
     print("Copying:", origin_path)
     os.makedirs(config_module.downloads_path, exist_ok=True)
     local_filepath = os.path.join(config_module.downloads_path, local_name+os.path.splitext(origin_path)[1])
+    local_filepath = os.path.splitext(local_filepath)[0]+os.path.splitext(local_filepath)[1].lower() #using splitext to convert .JPG -> .jpg, etc.
     os.rename(origin_path, local_filepath)
     return local_filepath
 

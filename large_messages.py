@@ -15,12 +15,14 @@ Galleries modifying commands:
 
 Casual commands:
 /selectgallery - select working gallery
-(TODO)/month - show selected month as preview of images
+/preview_month - show the selected month as preview of images
+/download_month - download all photos of the selected month
 
 Send a photo to save it.'''
 
 user_help_message = '''Commands:
 /selectgallery - select working gallery
-(TODO)/month - show selected month as preview of images
+/preview_month - show the selected month as preview of images
+/download_month - download all photos of the selected month
 
 To save an image just send it to me as document.'''

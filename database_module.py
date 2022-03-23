@@ -16,33 +16,40 @@ def open_connection(db_path=config_module.main_db_path):
 def init_database(): #create tables only if they not exist, so we can run this on every bot startup
     db_conn = open_connection()
     cur = db_conn.cursor()
-    cur.executescript('''
-        BEGIN TRANSACTION;
-        CREATE TABLE IF NOT EXISTS "galleries" (
-            "id"    INTEGER UNIQUE,
-            "name"  TEXT,
-            "deleted"   INTEGER DEFAULT 0,
-            "autorotate"    INTEGER DEFAULT 0,
-            PRIMARY KEY("id" AUTOINCREMENT)
-        );
-        CREATE TABLE IF NOT EXISTS "processing_queue" (
-            "id"    INTEGER UNIQUE,
-            "path"  TEXT,
-            "user_id"   INTEGER,
-            "gallery_id"    INTEGER,
-            "action"    TEXT,
-            PRIMARY KEY("id" AUTOINCREMENT)
-        );
-        CREATE TABLE IF NOT EXISTS "users" (
-            "id"    INTEGER UNIQUE,
-            "rights"    INTEGER,
-            "galleries" TEXT DEFAULT '[]',
-            "current_working_gallery"   INTEGER DEFAULT -1,
-            PRIMARY KEY("id")
-        );
-        COMMIT;
-    ''')
-    #TODO
+    cur.execute('SELECT `name` FROM `sqlite_master` WHERE `type`="table" AND `name`="users";')
+    if(cur.fetchone() == None):
+        cur = db_conn.cursor()
+        cur.executescript('''
+            BEGIN TRANSACTION;
+            CREATE TABLE IF NOT EXISTS "galleries" (
+                "id"    INTEGER UNIQUE,
+                "name"  TEXT,
+                "deleted"   INTEGER DEFAULT 0,
+                "autorotate"    INTEGER DEFAULT 0,
+                PRIMARY KEY("id" AUTOINCREMENT)
+            );
+            CREATE TABLE IF NOT EXISTS "processing_queue" (
+                "id"    INTEGER UNIQUE,
+                "path"  TEXT,
+                "user_id"   INTEGER,
+                "gallery_id"    INTEGER,
+                "action"    TEXT,
+                PRIMARY KEY("id" AUTOINCREMENT)
+            );
+            CREATE TABLE IF NOT EXISTS "users" (
+                "id"    INTEGER UNIQUE,
+                "rights"    INTEGER,
+                "galleries" TEXT DEFAULT '[]',
+                "current_working_gallery"   INTEGER DEFAULT -1,
+                PRIMARY KEY("id")
+            );
+            COMMIT;
+        ''')
+        print("WARNING! This is first launch of the program. Send /start to bot to register you as admin. Press enter to continue.")
+        return False
+    else:
+        print("Main database initialized.")
+        return True
 
 #----------------------------------------------------------------------------------------------------
 # USERS MODIFYING FUNCTIONS
@@ -244,6 +251,13 @@ def add_photo_to_gallery(db_path, date, checksum, size): #returns id of file bec
     new_line_id = cur.fetchone()[0]
     return new_line_id
 
+def modify_photo_checksum(db_path, photo_id, checksum):
+    db_conn = open_connection(db_path=db_path)
+    cur = db_conn.cursor()
+    cur.execute('UPDATE `photos` SET `checksum`="{}" WHERE `id`={};'.format(checksum, photo_id))
+    db_conn.commit()
+    db_conn.close()
+
 def check_photo_exists(db_path, size, checksum):
     db_conn = open_connection(db_path=db_path)
     cur = db_conn.cursor()
@@ -336,7 +350,6 @@ def select_all_photos_of_month(db_path, gallery_id, year, month, use_thumbs=Fals
     return result_paths
 
 def get_photo_id_by_path(path):
-    print("Photo id:", int(os.path.splitext(os.path.basename(path))[0]))
     return int(os.path.splitext(os.path.basename(path))[0])
 
 #----------------------------------------------------------------------------------------------------

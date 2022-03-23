@@ -11,21 +11,29 @@ import time
 import tempfile
 from datetime import datetime
 
+print("Press Ctrl+C to exit.")
 telebot.apihelper.API_URL = config_module.server_url
 bot = telebot.TeleBot(config_module.bot_token, parse_mode=None)
-database_module.init_database()
+os.makedirs(config_module.library_path, exist_ok=True)
+
+#used to setup first admin user
+if(not database_module.init_database()): first_launch = True
+else:                                    first_launch = False
 
 @bot.message_handler(commands=['start'])
 def start_cmd(message):
     bot.send_message(message.chat.id, "Welcome!")
     bot.send_message(message.chat.id, "Your chat id: "+str(message.chat.id))
-
-    user_rights = database_module.check_user_rights(message.chat.id)
-    if(user_rights == 1): user_type = "admin"
-    elif(user_rights == 0): user_type = "user"
-    else: user_type = "non-authorised"
-
-    bot.send_message(message.chat.id, "Your permission level is: "+user_type)
+    if(not first_launch):
+        user_rights = database_module.check_user_rights(message.chat.id)
+        if(user_rights == 1): user_type = "admin"
+        elif(user_rights == 0): user_type = "user"
+        else: user_type = "non-authorised"
+        bot.send_message(message.chat.id, "Your permission level is: "+user_type)
+    else:
+        database_module.add_user(message.chat.id, "admin")
+        bot.send_message(message.chat.id, "You've been registered as admin!")
+        print("User with id", message.chat.id, "have been registered as admin. If this isn't you, stop program and remove library folder, then start program again.")
     help_cmd(message)
 
 @bot.message_handler(commands=['help'])
@@ -155,16 +163,16 @@ def generate_inline_keyboard_galleries_selection(input_array, marked=None):
         markup.add(telebot.types.InlineKeyboardButton(button, callback_data="selectgallery "+gallery_id))
     return markup
 
-def generate_inline_keyboard_months_selection(input_array, gallery_id):
+def generate_inline_keyboard_months_selection(input_array, gallery_id, mode):
     markup = telebot.types.InlineKeyboardMarkup()
     markup.row_width = 1
     for button in input_array:
         year, month, photos_count = button
         if(year != None and month != None): #photos without exif marked as None/None
-            callback_data = "selectmonth "+str(year)+" "+str(month)+" "+str(gallery_id)
+            callback_data = mode+" "+str(year)+" "+str(month)+" "+str(gallery_id)
             button_text = datetime(year=year, month=month, day=1).strftime("%b %Y") + " - "+str(photos_count)+" photo(s)"
         else:
-            callback_data = "selectmonth 0000 00 "+str(gallery_id)
+            callback_data = mode+" 0000 00 "+str(gallery_id)
             button_text = "Without date - "+str(photos_count)+" photo(s)"
         markup.add(telebot.types.InlineKeyboardButton(button_text, callback_data=callback_data))
     return markup
@@ -177,8 +185,8 @@ def selectgallery_cmd(message):
         bot.send_message(message.chat.id, "Select gallery:", reply_markup=reply_markup)
     else: bot.send_message(message.chat.id, "Permission denied")
 
-@bot.message_handler(commands=["month"])
-def month_cmd(message):
+@bot.message_handler(commands=["preview_month"])
+def previewmonth_cmd(message):
     user_rights = database_module.check_user_rights(message.chat.id)
     if(user_rights == 1 or user_rights == 0):
         working_gallery = database_module.get_current_working_gallery(message.chat.id)
@@ -187,7 +195,23 @@ def month_cmd(message):
             months = database_module.find_months_in_gallery(gallery_db_path)
             if(months == None): bot.send_message(message.chat.id, "There are no photos in gallery!")
             else:
-                reply_markup = generate_inline_keyboard_months_selection(months, working_gallery)
+                reply_markup = generate_inline_keyboard_months_selection(months, working_gallery, "previewmonth")
+                gallery_name = database_module.get_gallery_info(working_gallery)[1]
+                bot.send_message(message.chat.id, "Gallery: "+gallery_name+"\nSelect month:", reply_markup=reply_markup)
+        else: bot.send_message(message.chat.id, "Please select gallery first!")
+    else: bot.send_message(message.chat.id, "Permission denied")
+
+@bot.message_handler(commands=["download_month"])
+def downloadwmonth_cmd(message):
+    user_rights = database_module.check_user_rights(message.chat.id)
+    if(user_rights == 1 or user_rights == 0):
+        working_gallery = database_module.get_current_working_gallery(message.chat.id)
+        if(working_gallery != None):
+            gallery_db_path = os.path.join(config_module.library_path, str(working_gallery), "gallery.db")
+            months = database_module.find_months_in_gallery(gallery_db_path)
+            if(months == None): bot.send_message(message.chat.id, "There are no photos in gallery!")
+            else:
+                reply_markup = generate_inline_keyboard_months_selection(months, working_gallery, "downloadmonth")
                 gallery_name = database_module.get_gallery_info(working_gallery)[1]
                 bot.send_message(message.chat.id, "Gallery: "+gallery_name+"\nSelect month:", reply_markup=reply_markup)
         else: bot.send_message(message.chat.id, "Please select gallery first!")
@@ -219,6 +243,23 @@ def doc_handler(message):
         else: bot.send_message(message.chat.id, "Please select gallery first!")
     else: bot.send_message(message.chat.id, "Permission denied")
 
+@bot.message_handler(content_types=['text'])
+def text_handler(message):
+    user_rights = database_module.check_user_rights(message.chat.id)
+    if(user_rights == 1 or user_rights == 0):
+        if(message.text.isdigit()):
+            working_gallery = database_module.get_current_working_gallery(message.chat.id)
+            if(working_gallery != None):
+                photo_id = int(message.text)
+                try:
+                    file = open(os.path.join(config_module.library_path, str(working_gallery), str(photo_id)+".jpg"), 'rb')
+                except FileNotFoundError:
+                    bot.send_message(message.chat.id, "Photo with this id doesn't exist!")
+                else:
+                    bot.send_document(message.chat.id, file)
+            else: bot.send_message(message.chat.id, "Please select gallery first!")
+    else: bot.send_message(message.chat.id, "Permission denied")
+
 #----------------------------------------------------------------------------------------------------
 # CALLBACK HANDLER
 #----------------------------------------------------------------------------------------------------
@@ -237,8 +278,8 @@ def callback_handler(call):
             bot.answer_callback_query(call.id, "Working gallery changed successfully!")
         else: bot.answer_callback_query(call.id, "Error!")
 
-    #callback for inline keyboard of /month command
-    if(call.data.startswith("selectmonth")):
+    #callback for inline keyboard of /preview_month command
+    if(call.data.startswith("previewmonth")):
         selected_year = int(call.data.split()[1])
         selected_month = int(call.data.split()[2])
         selected_gallery = int(call.data.split()[3])
@@ -257,7 +298,6 @@ def callback_handler(call):
                     visible_file_name = str(selected_gallery)+"-"+str(selected_month)+"."+str(selected_year)+"_preview.jpeg"
                     bot.send_document(call.message.chat.id, temp, visible_file_name=visible_file_name)
                 else:
-                    print("Got multiple tables:", len(preview_tables))
                     for i, table in enumerate(preview_tables):
                         temp = tempfile.TemporaryFile()
                         temp.write(table)
@@ -273,12 +313,42 @@ def callback_handler(call):
             bot.edit_message_text("Gallery deleted!", call.message.chat.id, call.message.id, reply_markup=None)
             bot.answer_callback_query(call.id, "Gallery deleted!")
 
+    #callback for inline keyboard of /download_month command
+    if(call.data.startswith("downloadmonth")):
+        selected_year = int(call.data.split()[1])
+        selected_month = int(call.data.split()[2])
+        selected_gallery = int(call.data.split()[3])
+
+        if(database_module.check_gallery_not_deleted(selected_gallery)):
+            if(selected_gallery in database_module.get_user_galleries(call.message.chat.id) or database_module.check_user_rights(call.message.chat.id) == 1):
+                bot.answer_callback_query(call.id, "Please wait...")
+                gallery_db_path = os.path.join(config_module.library_path, str(selected_gallery), "gallery.db")
+                batch = database_module.select_all_photos_of_month(gallery_db_path, selected_gallery, selected_year, selected_month, use_thumbs=False)
+                for photo in batch:
+                    bot.send_document(call.message.chat.id, open(photo, 'rb'))
+            else:
+                bot.edit_message_text("Access denied!", call.message.chat.id, call.message.id, reply_markup=None)
+                bot.answer_callback_query(call.id, "Access denied!")
+        else:
+            bot.edit_message_text("Gallery deleted!", call.message.chat.id, call.message.id, reply_markup=None)
+            bot.answer_callback_query(call.id, "Gallery deleted!")
+
     #callback for inline keyboard of autorotate prompts
     if(call.data.startswith("applyrotation")):
-        selected_gallery = int(call.data.split()[1])
-        selected_photo = int(call.data.split()[2])
+        selected_gallery   = int(call.data.split()[1])
+        selected_photo     = int(call.data.split()[2])
+        selected_rotations = int(call.data.split()[3])
         bot.answer_callback_query(call.id, "Applying rotation to photo "+str(selected_photo)+" from gallery "+str(selected_gallery))
-        
+        path_to_photo = os.path.join(config_module.library_path, str(selected_gallery), str(selected_photo)+".jpg")
+        rotated = photos_module.rotate_image(path_to_photo, selected_rotations)
+        with open(path_to_photo, 'wb') as file:
+            file.write(rotated)
+        #recalculate thumb and checksum
+        photos_module.create_preview(path_to_photo, selected_photo)
+        gallery_db_path = os.path.join(config_module.library_path, str(selected_gallery), "gallery.db")
+        md5_hash = storage_module.md5_of_file(path_to_photo)
+        database_module.modify_photo_checksum(gallery_db_path, selected_photo, md5_hash)
+
 
 #----------------------------------------------------------------------------------------------------
 # INTERNAL PROCESSING FUNCTIONS
@@ -297,8 +367,7 @@ def process_add_queue(stop_event):
             if(os.path.splitext(file[1])[1].lower() == ".png"):  #convert png to jpg
                 file = list(file)                                #converting from tuple to list to allow modifying
                 photos_module.png_to_jpg(file[1])
-                print("Removing", file[1])
-                #os.remove(file[1])
+                os.remove(file[1])
                 file[1] = os.path.splitext(file[1])[0]+".jpg"
 
             gallery_db_path = os.path.join(config_module.library_path, str(file[3]), "gallery.db")
@@ -323,7 +392,6 @@ def process_add_queue(stop_event):
                         database_module.add_to_queue(new_filepath, file[2], file[3], "rotation")
                 else:
                     #file already exists
-                    print(file[1])
                     bot.send_photo(file[2], open(file[1], 'rb'), caption="This photo already exists in this gallery!")
                     os.remove(file[1])
 
@@ -333,10 +401,10 @@ def process_add_queue(stop_event):
             print("Add queue processing stoppped!")
             break
 
-def generate_inline_keyboard_apply_rotation(gallery_id, photo_id, marked=None):
+def generate_inline_keyboard_apply_rotation(gallery_id, photo_id, rotations_count):
     markup = telebot.types.InlineKeyboardMarkup()
     markup.row_width = 1
-    markup.add(telebot.types.InlineKeyboardButton("Save", callback_data="applyrotation "+str(gallery_id)+" "+str(photo_id)))
+    markup.add(telebot.types.InlineKeyboardButton("Save", callback_data="applyrotation "+str(gallery_id)+" "+str(photo_id)+" "+str(rotations_count)))
     return markup
 
 def process_rotation_queue(stop_event):
@@ -348,14 +416,12 @@ def process_rotation_queue(stop_event):
                 thumb_filename = os.path.splitext(file[1])[0]+"_thumb.jpg"
                 predicted_rotation = photos_module.detect_rotation(thumb_filename)
                 if(predicted_rotation != 0):
-                    print("File:", file[1], "; thumbnail:", thumb_filename,"; predicted rotation:", predicted_rotation)
                     temp = tempfile.TemporaryFile() #buffer for rotated img
                     temp.write(photos_module.rotate_image(file[1], predicted_rotation))
                     temp.seek(0)
                     gallery_db_path = os.path.join(config_module.library_path, str(file[3]), "gallery.db")
-                    bot.send_photo(file[2], temp, caption="Seems like this is the correct image rotation. Save?", reply_markup=generate_inline_keyboard_apply_rotation(file[3], database_module.get_photo_id_by_path(file[1])))
-                time.sleep(5)
-                #database_module.delete_file_from_queue(file[0])
+                    bot.send_photo(file[2], temp, caption="Seems like this is the correct image rotation. Save?", reply_markup=generate_inline_keyboard_apply_rotation(file[3], database_module.get_photo_id_by_path(file[1]), predicted_rotation))
+                database_module.delete_file_from_queue(file[0])
         else: time.sleep(1)
         if(stop_event.is_set()):
             print("Rotation queue processing stoppped!")

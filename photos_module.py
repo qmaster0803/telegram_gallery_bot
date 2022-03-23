@@ -53,7 +53,6 @@ def create_preview_table(img_paths, columns=3):
         i += 1
     #append black square if last row has not enough pictures
     if(row[-1].shape[1] < SQUARE_IMG_SIZE*columns): rows[-1] = cv2.copyMakeBorder(rows[-1], top=0, bottom=0, left=0, right=(SQUARE_IMG_SIZE*columns - rows[-1].shape[1]), borderType=cv2.BORDER_CONSTANT, value=[0, 0, 0])
-    print(len(rows))
     output = []
     if(len(rows) <= MAX_PREVIEW_TABLE_ROWS):
         table = rows[0]
@@ -104,17 +103,17 @@ def detect_rotation(path, number_of_times_to_upsample=2):
     faces.append(len(face_recognition.face_locations(img, number_of_times_to_upsample=number_of_times_to_upsample)))
     img = numpy.rot90(img)
     faces.append(len(face_recognition.face_locations(img, number_of_times_to_upsample=number_of_times_to_upsample)))
-    print(faces)
     if(max(faces) == 0): return None
     elif(faces.count(max(faces)) != 1): return None
     else:
         return faces.index(max(faces))
 
 def rotate_image(path, rotations):
+    print(path, rotations)
     img = cv2.imread(path)
     rot = None
     if(rotations == 1):   rot = cv2.ROTATE_90_COUNTERCLOCKWISE
     elif(rotations == 2): rot = cv2.ROTATE_180
-    else:                 rot = cv2.ROTATE_90_CLOCKWISE
+    elif(rotations == 3): rot = cv2.ROTATE_90_CLOCKWISE
     img = cv2.rotate(img, rot)
     return cv2.imencode('.jpg', img)[1]
