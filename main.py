@@ -133,10 +133,10 @@ def delgallery_cmd(message):
     if(user_rights == 1):
         if(len(message.text.split()) == 2):
             del_gallery_id = message.text.split()[1]
-            if(database_module.delete_gallery(del_gallery_id) == 1):
+            if(database_module.delete_gallery(del_gallery_id) == 0):
                 bot.send_message(message.chat.id, "Gallery with this id doesn't exist!")
             else:
-                bot.send_message(message.chat.id, "Gallery succesfully deleted. You can restore it manually later.")
+                bot.send_message(message.chat.id, "Gallery successfully deleted. You can restore it manually later.")
         else: bot.send_message(message.chat.id, "Invalid syntax!")
     else: bot.send_message(message.chat.id, "Permission denied")
 
@@ -150,6 +150,25 @@ def listgalleries_cmd(message):
             galleries_list += gallery
             if(i != len(batch)-1): galleries_list += "\n"
         bot.send_message(message.chat.id, galleries_list)
+
+@bot.message_handler(commands=['autorotate'])
+def autorotate_cmd(message):
+    user_rights = database_module.check_user_rights(message.chat.id)
+    if(user_rights == 1):
+        selected_gallery = message.text.split()[1]
+        selected_status = message.text.split()[2]
+        status = None
+        if(selected_status == "enable"):    status = 1
+        elif(selected_status == "disable"): status = 0
+        else: bot.send_message(message.chat.id, "Invalid syntax!")
+
+        if(status != None):
+            if(database_module.set_autorotate_status(selected_gallery, status) == 1):
+                bot.send_message(message.chat.id, "Gallery modified successfully!")
+            else:
+                bot.send_message(message.chat.id, "Gallery with this id doesn't exist!")
+    else: bot.send_message(message.chat.id, "Permission denied")
+
 
 #----------------------------------------------------------------------------------------------------
 # CASUAL COMMANDS HANDLERS
@@ -392,8 +411,14 @@ def process_add_queue(stop_event):
                         database_module.add_to_queue(new_filepath, file[2], file[3], "rotation")
                 else:
                     #file already exists
-                    bot.send_photo(file[2], open(file[1], 'rb'), caption="This photo already exists in this gallery!")
+                    #downscale photo to 1500x to prevent errors
+                    resized_path = photos_module.resize_to_tg_photo(file[1])
+                    try:
+                        bot.send_photo(file[2], open(resized_path, 'rb'), caption="This photo already exists in this gallery!")
+                    except:
+                        bot.send_document(file[2], open(resized_path, 'rb'), caption="This photo already exists in this gallery!")
                     os.remove(file[1])
+                    os.remove(resized_path)
 
             database_module.delete_file_from_queue(file[0])
         else: time.sleep(1)
@@ -413,14 +438,19 @@ def process_rotation_queue(stop_event):
             now_hour = datetime.now().hour
             if(config_module.rotation_check_allday == 1 or (now_hour >= config_module.rotation_check_start and now_hour <= config_module.rotation_check_stop)):
                 file = database_module.get_file_from_queue("rotation") #return [id, path, user_id, gallery_id, action]
-                thumb_filename = os.path.splitext(file[1])[0]+"_thumb.jpg"
-                predicted_rotation = photos_module.detect_rotation(thumb_filename)
-                if(predicted_rotation != 0):
-                    temp = tempfile.TemporaryFile() #buffer for rotated img
-                    temp.write(photos_module.rotate_image(file[1], predicted_rotation))
-                    temp.seek(0)
-                    gallery_db_path = os.path.join(config_module.library_path, str(file[3]), "gallery.db")
-                    bot.send_photo(file[2], temp, caption="Seems like this is the correct image rotation. Save?", reply_markup=generate_inline_keyboard_apply_rotation(file[3], database_module.get_photo_id_by_path(file[1]), predicted_rotation))
+                dimensions = photos_module.get_photo_dimensions(file[1])
+                if(dimensions[0] <= 10000 and dimensions[1] <= 10000):
+                    thumb_filename = os.path.splitext(file[1])[0]+"_thumb.jpg"
+                    predicted_rotation = photos_module.detect_rotation(thumb_filename)
+                    if(predicted_rotation != 0 and predicted_rotation != None):
+                        temp = tempfile.TemporaryFile() #buffer for rotated img
+                        temp.write(photos_module.rotate_image(file[1], predicted_rotation))
+                        temp.seek(0)
+                        gallery_db_path = os.path.join(config_module.library_path, str(file[3]), "gallery.db")
+                        try:
+                            bot.send_photo(file[2], temp, caption="Seems like this is the correct image rotation. Save?", reply_markup=generate_inline_keyboard_apply_rotation(file[3], database_module.get_photo_id_by_path(file[1]), predicted_rotation))
+                        except:
+                            bot.send_document(file[2], temp, caption="Seems like this is the correct image rotation. Save?", reply_markup=generate_inline_keyboard_apply_rotation(file[3], database_module.get_photo_id_by_path(file[1]), predicted_rotation))
                 database_module.delete_file_from_queue(file[0])
         else: time.sleep(1)
         if(stop_event.is_set()):

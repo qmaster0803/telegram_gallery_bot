@@ -6,6 +6,7 @@ from datetime import datetime
 import subprocess
 import face_recognition
 import numpy
+import exifread
 
 SQUARE_IMG_SIZE        = 512
 WHITE_BORDER_SIZE      = 0.5 #in percents
@@ -72,14 +73,13 @@ def create_preview_table(img_paths, columns=3):
     return output
 
 def get_photo_date(path):
-    img = Image.open(path)
-    exif = img.getexif()
-    creation_time = exif.get(36867)
-    #according to EXIF docs, datetime format is "YYYY:MM:DD HH:MM:SS"
-    if(creation_time != None):
-        timestamp = datetime.timestamp(datetime.strptime(creation_time, "%Y:%m:%d %H:%M:%S"))
-        return int(timestamp)
-    else:
+    try:
+        with open(path, "rb") as file:
+            tags = exifread.process_file(file)
+            creation_time = tags["EXIF DateTimeOriginal"].values
+            timestamp = datetime.timestamp(datetime.strptime(creation_time, "%Y:%m:%d %H:%M:%S"))
+            return int(timestamp)
+    except KeyError:
         return None
 
 def heic_to_jpg(filename):
@@ -117,3 +117,13 @@ def rotate_image(path, rotations):
     elif(rotations == 3): rot = cv2.ROTATE_90_CLOCKWISE
     img = cv2.rotate(img, rot)
     return cv2.imencode('.jpg', img)[1]
+
+#uses imagemagick convert to downscale all images to 1500x to prevent "too large" error
+def resize_to_tg_photo(path):
+    resized_path = os.path.splitext(path)[0] + '_resized.jpg'
+    subprocess.run(["convert", "-geometry", "1500x", path, resized_path])
+    return resized_path
+
+def get_photo_dimensions(path):
+    img = Image.open(path)
+    return img.size

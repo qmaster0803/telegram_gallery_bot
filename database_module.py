@@ -217,12 +217,14 @@ def delete_gallery(gallery_id):
     cur = db_conn.cursor()
     cur.execute('UPDATE `galleries` SET `deleted`=1 WHERE `id`={};'.format(gallery_id))
     db_conn.commit()
+    ok = cur.rowcount
     #reset all users that have this gallery as working to empty working gallery (-1)
     del cur
     cur = db_conn.cursor()
     cur.execute('UPDATE `users` SET `current_working_gallery`=-1 WHERE `current_working_gallery`={};'.format(gallery_id))
     db_conn.commit()
     db_conn.close()
+    return ok
 
 def get_galleries_list(user_id):
     db_conn = open_connection()
@@ -346,11 +348,21 @@ def select_all_photos_of_month(db_path, gallery_id, year, month, use_thumbs=Fals
         #there are no file extensions, stored in database, so we can guess extension because of unique filenames
         if(use_thumbs): mask = os.path.join(config_module.library_path, str(gallery_id), str(photo_id[0])+"_thumb.*")
         else: mask = os.path.join(config_module.library_path, str(gallery_id), str(photo_id[0])+".*")
-        result_paths.append(glob.glob(mask)[0])
+        try: result_paths.append(glob.glob(mask)[0])
+        except IndexError: pass
     return result_paths
 
 def get_photo_id_by_path(path):
     return int(os.path.splitext(os.path.basename(path))[0])
+
+def set_autorotate_status(gallery_id, status):
+    db_conn = open_connection()
+    cur = db_conn.cursor()
+    cur.execute("UPDATE `galleries` SET `autorotate`={} WHERE `id`={};".format(status, gallery_id))
+    ok = cur.rowcount
+    db_conn.commit()
+    db_conn.close()
+    return ok
 
 #----------------------------------------------------------------------------------------------------
 # PHOTOS PROCESSING QUEUE FUNCTIONS
